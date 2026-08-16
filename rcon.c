@@ -30,6 +30,14 @@ void read_specs(char* pswd, char* addr, int* port) {
     }
 }
 
+int read_cmd(char* cmd) {
+    printf("Input minecraft server command: ");
+    if ( scanf("%99s", cmd) < 1 ) {
+        return 0;
+    }
+    return 1;
+}
+
 int main() {
     unsigned char packet_w[1460];
     unsigned char packet_r[4110];
@@ -43,6 +51,8 @@ int main() {
     char pswd[50] = "";
     char addr[16] = "";
     int port = 0;
+    char cmd[100] = "";
+    int read_cmd_ret = 1;
     read_specs(pswd, addr, &port);
     size_t pswd_len = strlen(pswd);
     s_addr.sin_family = AF_INET;
@@ -70,7 +80,6 @@ int main() {
     memcpy(packet_w + 8, &packet_type, 4);
     memcpy(packet_w + 12, pswd, pswd_len + 2);
     packet_len += sizeof(packet_len);
-    printf("password length = %ld\n", pswd_len);
     if ( (w_size = write(sock, packet_w, packet_len) ) < 0) {
         printf("Packet failed to send\n");
         close(sock);
@@ -82,6 +91,39 @@ int main() {
         exit(1);
     }
 
+    // clean up auth packet state
+    memset(packet_w, 0, sizeof(packet_w));
+    memset(packet_r, 0, sizeof(packet_r));
+    if ( (read_cmd_ret = read_cmd(cmd) ) == 0) {
+        printf("Command failed to read (size too large)\n");
+        close(sock);
+        exit(1);
+    }
+    printf("cmd = %s\n", cmd);
+    packet_len = strlen(cmd) + sizeof(packet_type) + sizeof(packet_rid) + 2;
+    packet_rid = 2;
+    packet_type = 2;
+    memcpy(packet_w, &packet_len, 4);
+    memcpy(packet_w + 4, &packet_rid, 4);
+    memcpy(packet_w + 8, &packet_type, 4);
+    memcpy(packet_w + 12, cmd, strlen(cmd) + 2);
+    packet_len += sizeof(packet_len);
+    if ( (w_size = write(sock, packet_w, packet_len) ) < 0) {
+        printf("Packet failed to send\n");
+        close(sock);
+        exit(1);
+    }
+    if ( (r_size = read(sock, packet_r, sizeof(packet_r))) < 0) {
+        printf("Packet failed to read\n");
+        close(sock);
+        exit(1);
+    }
+    size_t payload_size = r_size - 14;
+    unsigned char payload_strip[1000];
+    memcpy(payload_strip, packet_r + 12, r_size - 12);
+    payload_strip[payload_size] = '\0';
+    printf("%s", payload_strip);
 
+    close(sock);
     return 0;
 }
