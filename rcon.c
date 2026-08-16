@@ -21,7 +21,11 @@ void read_specs(char* pswd, char* addr, int* port) {
     }
     printf("Input server rcon port: ");
     if ( scanf("%d", port) < 1) {
-        printf("Server port failed to read\n");
+        printf("Server port not integer\n");
+        exit(1);
+    }
+    if ( *port < 1024 ) {
+        printf("Server port is privileged\n");
         exit(1);
     }
 }
@@ -40,28 +44,23 @@ int main() {
     char addr[16] = "";
     int port = 0;
     read_specs(pswd, addr, &port);
-    printf("port = %d\n", port);
-    printf("addr = %s\n", addr);
-    printf("pswd = %s\n", pswd);
     size_t pswd_len = strlen(pswd);
     s_addr.sin_family = AF_INET;
-    s_addr.sin_port = htons(port); // needs bounds checking, though conditional in read_specs should prevent...
-    if ( inet_pton(s_addr.sin_family, addr, &s_addr.sin_addr) < 0 ) {
-        printf("Failed to convert address\n");
+    s_addr.sin_port = htons(port);
+    // a conditional check for invalid address family (i.e. ret < 0) is not needed here since it is hardcoded
+    if ( inet_pton(s_addr.sin_family, addr, &s_addr.sin_addr) == 0 ) {
+        printf("Not a valid network address for IPv4 address family\n");
         exit(1);
     }
-    //printf("Address converted\n");
     if( (sock = socket(AF_INET, SOCK_STREAM, 0)) < 0 ) {
         printf("Failed to create socket\n");
         exit(1);
     }
-    //printf("Socket created\n");
     if ( connect(sock, (struct sockaddr*)&s_addr, sizeof(s_addr)) < 0 ) {
         printf("Socket failed to connect on %s\n", addr);
         close(sock);
         exit(1);
     }
-    //printf("Connected\n");
     // Construct auth packet
     packet_len = pswd_len + sizeof(packet_type) + sizeof(packet_rid) + 2;
     packet_type = 3;
@@ -77,18 +76,12 @@ int main() {
         close(sock);
         exit(1);
     }
-    /*printf("wrote %ld bytes\n", w_size);
-    for(size_t i = 0; i < (size_t) w_size; i++)
-        printf("%02x ", packet_w[i]);*/
     if ( (r_size = read(sock, packet_r, sizeof(packet_r))) < 0) {
         printf("Packet failed to read\n");
         close(sock);
         exit(1);
     }
 
-    printf("wrote %ld bytes\n", r_size);
-    for(size_t i = 0; i < (size_t) r_size; i++)
-        printf("%02x ", packet_r[i]);
 
     return 0;
 }
