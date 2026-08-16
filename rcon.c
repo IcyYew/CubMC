@@ -24,8 +24,8 @@ void read_specs(char* pswd, char* addr, int* port) {
         printf("Server port not integer\n");
         exit(1);
     }
-    if ( *port < 1024 ) {
-        printf("Server port is privileged\n");
+    if ( *port < 1024 || *port > 65535 ) {
+        printf("Server port is privileged (<1024) or invalid (>65535)\n");
         exit(1);
     }
 }
