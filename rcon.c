@@ -32,7 +32,7 @@ void read_specs(char* pswd, char* addr, int* port) {
 
 int read_cmd(char* cmd) {
     printf("Input minecraft server command: ");
-    if ( scanf("%99s", cmd) < 1 ) {
+    if ( scanf(" %99[^\n]", cmd) < 1 ) {
         return 0;
     }
     return 1;
