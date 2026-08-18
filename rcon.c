@@ -7,36 +7,25 @@
 #include <unistd.h>
 #include <string.h>
 
-
-void read_specs(char* pswd, char* addr, int* port) {
-    printf("Input rcon password: ");
-    if ( scanf("%49s", pswd) < 1 ) {
-        printf("Password failed to read (size too large)\n");
-        exit(1);
+int stdin_consumer(char* str) {
+    if (str[strlen(str) - 1] != '\n') {
+        scanf("%*[^\n]");
+        getchar();
+        return 1;
     }
-    printf("Input server address: ");
-    if ( scanf("%15s", addr) < 1) {
-        printf("Server address failed to read (size too large)\n");
-        exit(1);
-    }
-    printf("Input server rcon port: ");
-    if ( scanf("%d", port) < 1) {
-        printf("Server port not integer\n");
-        exit(1);
-    }
-    if ( *port < 1024 || *port > 65535 ) {
-        printf("Server port is privileged (<1024) or invalid (>65535)\n");
-        exit(1);
-    }
+    str[strlen(str) - 1] = '\0';
+    return 0;
 }
 
-int read_cmd(char* cmd) {
-    printf("Input minecraft server command: ");
-    if ( scanf(" %99[^\n]", cmd) < 1 ) {
+int read_str(char* prepend_str, char* str, size_t count) {
+    printf("Input %s: ", prepend_str);
+    fgets(str, count, stdin);
+    if (stdin_consumer(str)) {
         return 0;
     }
     return 1;
 }
+
 
 int main() {
     unsigned char packet_w[1460];
@@ -50,13 +39,25 @@ int main() {
     int sock;
     char pswd[50] = "";
     char addr[16] = "";
-    int port = 0;
+    char port[6] = "";
     char cmd[100] = "";
-    int read_cmd_ret = 1;
-    read_specs(pswd, addr, &port);
+    if ( read_str("password", pswd, sizeof(pswd)) == 0) {
+        printf("Password too large.\n");
+        exit(1);
+    }
+    if ( read_str("address", addr, sizeof(addr)) == 0) {
+        printf("Address too large\n");
+        exit(1);
+    }
+    read_str("port", port, sizeof(port));
+    int l_port = strtol(port, NULL, 10);
+    if ( l_port < 1024 || l_port > 65535 ) {
+        printf("Port not within valid range.\n");
+        exit(1);
+    }
     size_t pswd_len = strlen(pswd);
     s_addr.sin_family = AF_INET;
-    s_addr.sin_port = htons(port);
+    s_addr.sin_port = htons(strtol(port, NULL, 10));
     // a conditional check for invalid address family (i.e. ret < 0) is not needed here since it is hardcoded
     if ( inet_pton(s_addr.sin_family, addr, &s_addr.sin_addr) == 0 ) {
         printf("Not a valid network address for IPv4 address family\n");
@@ -94,12 +95,11 @@ int main() {
     // clean up auth packet state
     memset(packet_w, 0, sizeof(packet_w));
     memset(packet_r, 0, sizeof(packet_r));
-    if ( (read_cmd_ret = read_cmd(cmd) ) == 0) {
-        printf("Command failed to read (size too large)\n");
+    if ( read_str("command", cmd, sizeof(cmd)) == 0 ) {
+        printf("Command too large");
         close(sock);
         exit(1);
     }
-    printf("cmd = %s\n", cmd);
     packet_len = strlen(cmd) + sizeof(packet_type) + sizeof(packet_rid) + 2;
     packet_rid = 2;
     packet_type = 2;
@@ -122,7 +122,7 @@ int main() {
     unsigned char payload_strip[1000];
     memcpy(payload_strip, packet_r + 12, r_size - 12);
     payload_strip[payload_size] = '\0';
-    printf("%s", payload_strip);
+    printf("%s\n", payload_strip);
 
     close(sock);
     return 0;
