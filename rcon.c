@@ -57,12 +57,6 @@ int main() {
     char cmd[1440] = ""; // not exactly its maximum allocation to give some breathing room, upper bound may even need lowered
     int l_port; 
     size_t pswd_len; 
-
-    if( (sock = socket(AF_INET, SOCK_STREAM, 0)) < 0 ) {
-        printf("Failed to create socket\n");
-        exit(1);
-    }
-
     if ( read_str("password", pswd, sizeof(pswd)) == 0) {
         printf("Password too large.\n");
         exit(1);
@@ -83,6 +77,10 @@ int main() {
     // a conditional check for invalid address family (i.e. ret < 0) is not needed here since it is hardcoded
     if ( inet_pton(s_addr.sin_family, addr, &s_addr.sin_addr) == 0 ) {
         printf("Not a valid network address for IPv4 address family\n");
+        exit(1);
+    }
+    if( (sock = socket(AF_INET, SOCK_STREAM, 0)) < 0 ) {
+        printf("Failed to create socket\n");
         exit(1);
     }
     if ( connect(sock, (struct sockaddr*)&s_addr, sizeof(s_addr)) < 0 ) {
@@ -106,6 +104,14 @@ int main() {
     }
     if ( (r_size = read(sock, packet_r, sizeof(packet_r))) < 0) {
         printf("Packet failed to read\n");
+        close(sock);
+        exit(1);
+    }
+
+    memcpy(&packet_rid, packet_r + 4, 4);
+    memcpy(&packet_type, packet_r + 8, 4);
+    if (packet_rid != 1 || packet_type != 2) {
+        printf("Auth unsuccessful\n");
         close(sock);
         exit(1);
     }
