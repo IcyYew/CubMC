@@ -1,8 +1,11 @@
 CC=gcc
-CFLAGS=-Wextra -Wall
+CFLAGS= -Wall -Wextra
 
 rcon: rcon.o
-	$(CC) -o rcon rcon.o $(CFLAGS)
+	$(CC) -o rcon rcon.o
+
+rcon.o: rcon.c
+	$(CC) $(CFLAGS) -c rcon.c -o rcon.o
 
 
 clean:
