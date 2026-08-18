@@ -14,7 +14,11 @@
 // expected parameters, we add a null terminator in the index of the newline
 int stdin_consumer(char* str) {
     if (str[strlen(str) - 1] != '\n') {
-        scanf("%*[^\n]");
+        // checking != 0 since > 1 would mean something is dreadfully wrong, < 0 is EOF
+        if ( scanf("%*[^\n]") == 0 ) {
+            printf("EOF\n");
+            return 1;
+        }
         getchar();
         return 1;
     }
