@@ -50,8 +50,10 @@ int main() {
     struct sockaddr_in s_addr = {0};
     int sock;
     char pswd[50] = "";
-    char addr[16] = "";
-    char port[6] = "";
+    // allow for maximum size address, allocated 17 bytes to account for \n and \0 in current input validation
+    char addr[17] = "";
+    // allow for ports up to max of 5 chars, allocated 7 bytes to account for \n and \0 in current input validation
+    char port[7] = "";
     char cmd[1440] = ""; // not exactly its maximum allocation to give some breathing room, upper bound may even need lowered
     int l_port; 
     size_t pswd_len; 
@@ -70,7 +72,7 @@ int main() {
         exit(1);
     }
     read_str("port", port, sizeof(port));
-    l_port = strtol(port, NULL, 10);
+    l_port = strtol(port, NULL, 10); // need to retain endptr eventually to prevent garbage input
     if ( l_port < 1024 || l_port > 65535 ) {
         printf("Port not within valid range.\n");
         exit(1);
@@ -135,7 +137,7 @@ int main() {
         exit(1);
     }
     size_t payload_size = r_size - 14;
-    unsigned char payload_strip[1000];
+    unsigned char payload_strip[payload_size];
     memcpy(payload_strip, packet_r + 12, r_size - 12);
     payload_strip[payload_size] = '\0';
     printf("%s\n", payload_strip);
