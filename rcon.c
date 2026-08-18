@@ -14,8 +14,7 @@
 // expected parameters, we add a null terminator in the index of the newline
 int stdin_consumer(char* str) {
     if (str[strlen(str) - 1] != '\n') {
-        // checking != 0 since > 1 would mean something is dreadfully wrong, < 0 is EOF
-        if ( scanf("%*[^\n]") == 0 ) {
+        if ( scanf("%*[^\n]") == EOF ) {
             printf("EOF\n");
             return 1;
         }
@@ -74,6 +73,7 @@ int main() {
     l_port = strtol(port, &strtol_endptr, 10);
     if ( *strtol_endptr != '\0' || strtol_endptr == port ) {
         printf("No port conversion, not numerical or garbage-addled\n");
+        exit(1);
     }
 
     if ( l_port < 1024 || l_port > 65535 ) {
