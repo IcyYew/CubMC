@@ -137,8 +137,8 @@ int main() {
         exit(1);
     }
     size_t payload_size = r_size - 14;
-    unsigned char payload_strip[payload_size];
-    memcpy(payload_strip, packet_r + 12, r_size - 12);
+    unsigned char payload_strip[payload_size + 1];
+    memcpy(payload_strip, packet_r + 12, payload_size);
     payload_strip[payload_size] = '\0';
     printf("%s\n", payload_strip);
 
