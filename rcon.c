@@ -7,6 +7,11 @@
 #include <unistd.h>
 #include <string.h>
 
+
+// get char loop isn't my style, this uses scanf to purge stdin up to a newline (for cases in which stdin violates our length requirements for str
+// getchar() eats the newline character. There are some other concerns such as EOF or no newline character to be addressed, works for now,
+// considering the usecase of this utility, further input validation is a little unnecessary. Assuming fgets() did read input with a newline within our
+// expected parameters, we add a null terminator in the index of the newline
 int stdin_consumer(char* str) {
     if (str[strlen(str) - 1] != '\n') {
         scanf("%*[^\n]");
@@ -19,12 +24,19 @@ int stdin_consumer(char* str) {
 
 int read_str(char* prepend_str, char* str, size_t count) {
     printf("Input %s: ", prepend_str);
-    fgets(str, count, stdin);
+    // this is very inelegant, should be fine for now, returning 0 also prints error in main, which is fine, i guess...
+    if ( fgets(str, count, stdin) == NULL ) {
+        printf("Input error or EOF\n");
+        return 0;
+    }
     if (stdin_consumer(str)) {
         return 0;
     }
     return 1;
 }
+
+// plan for exiting gracefully, could turn into a messy function depending on the state of the application when called
+// void exit_graceful(int sock)
 
 
 int main() {
@@ -40,7 +52,15 @@ int main() {
     char pswd[50] = "";
     char addr[16] = "";
     char port[6] = "";
-    char cmd[100] = "";
+    char cmd[1440] = ""; // not exactly its maximum allocation to give some breathing room, upper bound may even need lowered
+    int l_port; 
+    size_t pswd_len; 
+
+    if( (sock = socket(AF_INET, SOCK_STREAM, 0)) < 0 ) {
+        printf("Failed to create socket\n");
+        exit(1);
+    }
+
     if ( read_str("password", pswd, sizeof(pswd)) == 0) {
         printf("Password too large.\n");
         exit(1);
@@ -50,21 +70,17 @@ int main() {
         exit(1);
     }
     read_str("port", port, sizeof(port));
-    int l_port = strtol(port, NULL, 10);
+    l_port = strtol(port, NULL, 10);
     if ( l_port < 1024 || l_port > 65535 ) {
         printf("Port not within valid range.\n");
         exit(1);
     }
-    size_t pswd_len = strlen(pswd);
+    pswd_len = strlen(pswd);
     s_addr.sin_family = AF_INET;
-    s_addr.sin_port = htons(strtol(port, NULL, 10));
+    s_addr.sin_port = htons(l_port);
     // a conditional check for invalid address family (i.e. ret < 0) is not needed here since it is hardcoded
     if ( inet_pton(s_addr.sin_family, addr, &s_addr.sin_addr) == 0 ) {
         printf("Not a valid network address for IPv4 address family\n");
-        exit(1);
-    }
-    if( (sock = socket(AF_INET, SOCK_STREAM, 0)) < 0 ) {
-        printf("Failed to create socket\n");
         exit(1);
     }
     if ( connect(sock, (struct sockaddr*)&s_addr, sizeof(s_addr)) < 0 ) {
