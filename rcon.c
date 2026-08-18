@@ -60,7 +60,8 @@ int main() {
     char port[7] = "";
     char cmd[1440] = ""; // not exactly its maximum allocation to give some breathing room, upper bound may even need lowered
     int l_port; 
-    size_t pswd_len; 
+    size_t pswd_len;
+    char* strtol_endptr;
     if ( read_str("password", pswd, sizeof(pswd)) == 0) {
         printf("Password too large.\n");
         exit(1);
@@ -70,7 +71,11 @@ int main() {
         exit(1);
     }
     read_str("port", port, sizeof(port));
-    l_port = strtol(port, NULL, 10); // need to retain endptr eventually to prevent garbage input
+    l_port = strtol(port, &strtol_endptr, 10);
+    if ( *strtol_endptr != '\0' || strtol_endptr == port ) {
+        printf("No port conversion, not numerical or garbage-addled\n");
+    }
+
     if ( l_port < 1024 || l_port > 65535 ) {
         printf("Port not within valid range.\n");
         exit(1);
