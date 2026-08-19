@@ -183,12 +183,22 @@ int main() {
         cmd_len = strlen(cmd);
         packet_type = 2;
         packet_len = packet_constructor(packet_w, cmd, cmd_len, packet_type);
-        if ( (w_size = write(sock, packet_w, packet_len) ) < 0) {
-            printf("Packet failed to send\n");
-            continue;
+        while ( (int32_t)bytes_in_buffer < packet_len ) {
+            if ( (w_size = write(sock, packet_w, packet_len - bytes_in_buffer) ) < 0) {
+                printf("Packet failed to send\n");
+                continue;
+            }
+            if ( w_size == 0 ) {
+                // connection broken, need to re-establish on new sock
+            }
+            bytes_in_buffer += w_size;
         }
+
+
+        
+        bytes_in_buffer = 0;
         // Continue reading until we receive at least enough bytes for the packet_len field
-        while (bytes_in_buffer < 4) {
+        while ( bytes_in_buffer < sizeof(packet_len)) {
             if ( (r_size = read(sock, packet_r + bytes_in_buffer, sizeof(packet_r) - bytes_in_buffer)) < 0) {
                 printf("Packet failed to read\n");
                 connection_ok = 0;
@@ -214,9 +224,12 @@ int main() {
             }
             bytes_in_buffer += r_size;
         }
+    
+        if ( (packet_r[packet_len + sizeof(packet_len)] != packet_rid) ){
+            // fragmented multiple packets in one response
 
-        // Response packet is all in the same response
-        // irrelevant condition in current state, since we read untiul bytes_in_buffer == packet_len
+            
+        }
         if ( (int32_t)bytes_in_buffer == packet_len ) {
             // actual payload is bytes in packet_r - three int32 headers and two null terminators
             size_t payload_size = bytes_in_buffer - 14;
