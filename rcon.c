@@ -102,8 +102,11 @@ int main() {
     // these two variables can be generalized into a payload_len
     size_t pswd_len;
     size_t cmd_len;
+    
+    size_t bytes_in_buffer = 0;
 
     char* strtol_endptr;
+    int connection_err = 1;
     if ( read_str("password", pswd, sizeof(pswd)) == 0) {
         printf("Password too large.\n");
         exit(1);
@@ -154,8 +157,8 @@ int main() {
         exit(1);
     }
 
-    memcpy(&packet_rid, packet_r + 4, 4);
-    memcpy(&packet_type, packet_r + 8, 4);
+    memcpy(&packet_rid, packet_r + RCON_RID_OFF, sizeof(packet_rid));
+    memcpy(&packet_type, packet_r + RCON_TYP_OFF, sizeof(packet_rid));
     if (packet_rid != 1 || packet_type != 2) {
         printf("Auth unsuccessful\n");
         close(sock);
@@ -169,7 +172,7 @@ int main() {
         // clean-up packet state
         memset(packet_w, 0, sizeof(packet_w));
         memset(packet_r, 0, sizeof(packet_r));
-
+        bytes_in_buffer = 0;
         if ( read_str("command", cmd, sizeof(cmd)) == 0 ) {
             printf("Command too large\n");
             continue;
@@ -184,15 +187,49 @@ int main() {
             printf("Packet failed to send\n");
             continue;
         }
-        if ( (r_size = read(sock, packet_r, sizeof(packet_r))) < 0) {
-            printf("Packet failed to read\n");
-            continue;
+        // Continue reading until we receive at least enough bytes for the packet_len field
+        while (bytes_in_buffer < 4) {
+            if ( (r_size = read(sock, packet_r + bytes_in_buffer, sizeof(packet_r) - bytes_in_buffer)) < 0) {
+                printf("Packet failed to read\n");
+                connection_err = 0;
+                break;
+            }
+            if ( r_size == 0 ) {
+                // connection broken, need to re-establish on new sock, massive overhaul
+            }
+            bytes_in_buffer += r_size;
         }
-        size_t payload_size = r_size - 14;
-        unsigned char payload_strip[payload_size + 1];
-        memcpy(payload_strip, packet_r + 12, payload_size);
-        payload_strip[payload_size] = '\0';
-        printf("%s\n", payload_strip);
+
+        memcpy(&packet_len, packet_r + RCON_LEN_OFF, sizeof(packet_len));
+        packet_len += sizeof(packet_len);
+
+        while ( (int32_t)bytes_in_buffer < packet_len ) {
+            if ( (r_size = read(sock, packet_r + bytes_in_buffer, sizeof(packet_r) - bytes_in_buffer)) < 0) {
+                printf("Packet failed to read\n");
+                connection_err = 0;
+                break;
+            }
+            if ( r_size == 0) {
+                // connection broken, need to re-estalish on new sock, massive overhaul
+            }
+            bytes_in_buffer += r_size;
+        }
+
+        // Response packet is all in the same response
+        // irrelevant condition in current state, since we read untiul bytes_in_buffer == packet_len
+        if ( (int32_t)bytes_in_buffer == packet_len ) {
+            // actual payload is bytes in packet_r - three int32 headers and two null terminators
+            size_t payload_size = bytes_in_buffer - 14;
+            // Payload strip is allocated payload_size + 1 for null termination
+            unsigned char payload_strip[payload_size + 1];
+            memcpy(payload_strip, packet_r + 12, payload_size);
+            payload_strip[payload_size] = '\0';
+            printf("%s\n", payload_strip);
+        }
+        if (connection_err == 0) {
+            break;
+        }
+        rid_iter++;
     }
     close(sock);
     return 0;
