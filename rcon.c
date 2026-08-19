@@ -8,6 +8,12 @@
 #include <string.h>
 
 
+#define RCON_LEN_OFF    0
+#define RCON_RID_OFF    4
+#define RCON_TYP_OFF    8
+#define RCON_PLD_OFF   12
+
+
 // get char loop isn't my style, this uses scanf to purge stdin up to a newline (for cases in which stdin violates our length requirements for str
 // getchar() eats the newline character. There are some other concerns such as EOF or no newline character to be addressed, works for now,
 // considering the usecase of this utility, further input validation is a little unnecessary. Assuming fgets() did read input with a newline within our
@@ -47,6 +53,34 @@ int read_str(char* prepend_str, char* str, size_t count) {
 // void exit_graceful(int sock)
 
 
+
+int32_t rid_iter = 1;
+
+// Constructs an RCON packet, unsigned char* packet is to be written into, unsigned char* payload is the string payload passed from the function call
+// size_t payload_count is the length of that payload, and packet_type is what type of packet we have
+// Internally, the variable packet_len is used as both the RCON length field and then re-used as the overrall packet buffer size
+// We allocate two extra bytes to packet_len to account for the two null terminators expected by the RCON protocol, one for the payload itself and
+// another for the null padding
+// The function returns packet_len as the total packet buffer size for use in subsequent read/write handling after this function is called
+// An important note that this function relies on the global variable rid_iter, and the expectation is that rid_iter be iterated upon after the packet
+// referenced by it is completely serialized and handled after this function call
+int32_t packet_constructor(unsigned char* packet, const char* payload, size_t payload_count, int32_t packet_type) {
+    // RCON length field
+    int32_t packet_len = sizeof(packet_type) + sizeof(rid_iter) + payload_count + 2;
+    memcpy(packet, &packet_len, sizeof(packet_len));
+    memcpy(packet + RCON_RID_OFF, &rid_iter, sizeof(rid_iter));
+    memcpy(packet + RCON_TYP_OFF, &packet_type, sizeof(packet_type));
+    memcpy(packet + RCON_PLD_OFF, payload, payload_count);
+    // Re-use variable, now is total buffer size
+    packet_len += sizeof(packet_len);
+    // write two null terminators per RCON spec
+    packet[packet_len - 2] = '\0';
+    packet[packet_len - 1] = '\0';
+    return packet_len;
+}
+
+
+
 int main() {
     unsigned char packet_w[1460];
     unsigned char packet_r[4110];
@@ -63,8 +97,12 @@ int main() {
     // allow for ports up to max of 5 chars, allocated 7 bytes to account for \n and \0 in current input validation
     char port[7] = "";
     char cmd[1440] = ""; // not exactly its maximum allocation to give some breathing room, upper bound may even need lowered
-    int l_port; 
+    int l_port;
+
+    // these two variables can be generalized into a payload_len
     size_t pswd_len;
+    size_t cmd_len;
+
     char* strtol_endptr;
     if ( read_str("password", pswd, sizeof(pswd)) == 0) {
         printf("Password too large.\n");
@@ -103,14 +141,8 @@ int main() {
         exit(1);
     }
     // Construct auth packet
-    packet_len = pswd_len + sizeof(packet_type) + sizeof(packet_rid) + 2;
     packet_type = 3;
-    packet_rid = 1;
-    memcpy(packet_w, &packet_len, 4);
-    memcpy(packet_w + 4, &packet_rid, 4);
-    memcpy(packet_w + 8, &packet_type, 4);
-    memcpy(packet_w + 12, pswd, pswd_len + 2);
-    packet_len += sizeof(packet_len);
+    packet_len = packet_constructor(packet_w, pswd, pswd_len, packet_type);
     if ( (w_size = write(sock, packet_w, packet_len) ) < 0) {
         printf("Packet failed to send\n");
         close(sock);
@@ -129,6 +161,9 @@ int main() {
         close(sock);
         exit(1);
     }
+    // !!!
+    // temporary iteration on global for testing
+    rid_iter++; 
 
     // clean up auth packet state
     memset(packet_w, 0, sizeof(packet_w));
@@ -138,14 +173,9 @@ int main() {
         close(sock);
         exit(1);
     }
-    packet_len = strlen(cmd) + sizeof(packet_type) + sizeof(packet_rid) + 2;
-    packet_rid = 2;
+    cmd_len = strlen(cmd);
     packet_type = 2;
-    memcpy(packet_w, &packet_len, 4);
-    memcpy(packet_w + 4, &packet_rid, 4);
-    memcpy(packet_w + 8, &packet_type, 4);
-    memcpy(packet_w + 12, cmd, strlen(cmd) + 2);
-    packet_len += sizeof(packet_len);
+    packet_len = packet_constructor(packet_w, cmd, cmd_len, packet_type);
     if ( (w_size = write(sock, packet_w, packet_len) ) < 0) {
         printf("Packet failed to send\n");
         close(sock);
