@@ -195,75 +195,47 @@ int main() {
         }
         
         bytes_in_buffer = 0;
-        // Continue reading until we receive at least enough bytes for the packet_len field
-        while ( bytes_in_buffer < sizeof(packet_len)) {
-            if ( (r_size = read(sock, packet_r + bytes_in_buffer, sizeof(packet_r) - bytes_in_buffer)) < 0) {
-                printf("Packet failed to read\n");
-                connection_ok = 0;
-                break;
+            // Continue reading until we receive at least enough bytes for the packet_len field
+        while (1) {
+            while ( bytes_in_buffer < sizeof(packet_len)) {
+                if ( (r_size = read(sock, packet_r + bytes_in_buffer, sizeof(packet_r) - bytes_in_buffer)) < 0) {
+                    printf("Packet failed to read\n");
+                    connection_ok = 0;
+                    break;
+                }
+                if ( r_size == 0 ) {
+                    // connection broken, need to re-establish on new sock, massive overhaul
+                }
+                bytes_in_buffer += r_size;
             }
-            if ( r_size == 0 ) {
-                // connection broken, need to re-establish on new sock, massive overhaul
-            }
-            bytes_in_buffer += r_size;
-        }
 
-        memcpy(&packet_len, packet_r + RCON_LEN_OFF, sizeof(packet_len));
-        packet_len += sizeof(packet_len);
+            memcpy(&packet_len, packet_r + RCON_LEN_OFF, sizeof(packet_len));
+            packet_len += sizeof(packet_len);
 
-        while ( (int32_t)bytes_in_buffer < packet_len ) {
-            if ( (r_size = read(sock, packet_r + bytes_in_buffer, sizeof(packet_r) - bytes_in_buffer)) < 0) {
-                printf("Packet failed to read\n");
-                connection_ok = 0;
-                break;
+            while ( (int32_t)bytes_in_buffer < packet_len ) {
+                if ( (r_size = read(sock, packet_r + bytes_in_buffer, sizeof(packet_r) - bytes_in_buffer)) < 0) {
+                    printf("Packet failed to read\n");
+                    connection_ok = 0;
+                    break;
+                }
+                if ( r_size == 0) {
+                    // connection broken, need to re-estalish on new sock, massive overhaul
+                }
+                bytes_in_buffer += r_size;
             }
-            if ( r_size == 0) {
-                // connection broken, need to re-estalish on new sock, massive overhaul
-            }
-            bytes_in_buffer += r_size;
-        }
-    
-        // happy path, we have a complete packet in the buffer with no other appended bytes or missing bytes
-        if ( (int32_t)bytes_in_buffer == packet_len ) {
-            // actual payload is bytes in packet_r - three int32 headers and two null terminators
+        
             size_t payload_size = bytes_in_buffer - 14;
-            // Payload strip is allocated payload_size + 1 for null termination
             unsigned char payload_strip[payload_size + 1];
             memcpy(payload_strip, packet_r + 12, payload_size);
             payload_strip[payload_size] = '\0';
             printf("%s\n", payload_strip);
-        }
-
-        if ( (int32_t)bytes_in_buffer > packet_len ) {
-            size_t tail_bytes = bytes_in_buffer - packet_len;
-            size_t tail_size = tail_bytes - 14;
-            unsigned char payload_strip[tail_bytes + 1];
-
-            memmove(packet_r, packet_r + packet_len, tail_bytes);
-
-            memcpy(&packet_len, packet_r + RCON_LEN_OFF, sizeof(packet_len));
-
-            // need to reassess overall handling, trailing bytes need to be treated as a new packet rather than endless conditionals and fall through the
-            // same checks.
-            //
-            // In essence:
-            // After packet_len bytes are consumed -> tail_bytes = bytes_in_buffer - packet_len
-            // memmove tail to the front of the buffer
-            // bytes_in_buffer = tail_bytes
-            // fall through to complete logic again
-            if ( (tail_bytes - sizeof(packet_len)) == packet_len) {
-                // print payload
-            }
-            else if ( (tail_bytes - sizeof(packet_len)) > packet_len) {
-                // loop repeats...
-            }
-            else {
-                //we have pure garbage if < packet_len
+            bytes_in_buffer -= packet_len;
+            if ( bytes_in_buffer == 0 ) {
+                break;
             }
 
+            memmove(packet_r, packet_r + packet_len, bytes_in_buffer);
 
-            payload_strip[good_bytes] = '\0';
-            printf("%s\n", payload_strip);
         }
         if (connection_ok == 0) {
             break;
