@@ -84,7 +84,8 @@ int32_t packet_constructor(unsigned char* packet, const char* payload, size_t pa
 int main() {
     unsigned char packet_w[1460];
     unsigned char packet_r[4110];
-    unsigned char packet_s[1460]; 
+    unsigned char packet_s[1460];
+    char sentinel_pload[] = "Invalid payload";
     ssize_t w_size;
     ssize_t r_size;
     ssize_t s_size;
@@ -105,6 +106,7 @@ int main() {
     // these two variables can be generalized into a payload_len
     size_t pswd_len;
     size_t cmd_len;
+    size_t sentinel_len;
     
     size_t bytes_in_buffer = 0;
 
@@ -199,7 +201,8 @@ int main() {
         packet_type = 200;
         rid_iter++;
         sentinel_packet_rid = rid_iter;
-        packet_len = packet_constructor(packet_s, cmd, cmd_len, packet_type);
+        sentinel_len = strlen(sentinel_pload);
+        packet_len = packet_constructor(packet_s, sentinel_pload, sentinel_len, packet_type);
         rid_iter--;
         while ( (int32_t)bytes_in_buffer < packet_len ) {
             if ( (s_size = write(sock, packet_s + bytes_in_buffer, packet_len - bytes_in_buffer) ) < 0) {
@@ -247,10 +250,6 @@ int main() {
             payload_strip[payload_size] = '\0';
             printf("%s\n", payload_strip);
             bytes_in_buffer -= packet_len;
-            if ( bytes_in_buffer == 0 ) {
-                break;
-            }
-
             memcpy(&packet_rid, packet_r + RCON_RID_OFF, sizeof(packet_rid));
             if ( packet_rid == sentinel_packet_rid ) {
                 break;
