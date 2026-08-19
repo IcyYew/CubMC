@@ -13,7 +13,8 @@
 // considering the usecase of this utility, further input validation is a little unnecessary. Assuming fgets() did read input with a newline within our
 // expected parameters, we add a null terminator in the index of the newline
 int stdin_consumer(char* str) {
-    if (str[strlen(str) - 1] != '\n') {
+    size_t str_len = strlen(str);
+    if ( str_len > 0 && str[str_len - 1] != '\n') {
         if ( scanf("%*[^\n]") == EOF ) {
             printf("EOF\n");
             return 1;
@@ -21,7 +22,7 @@ int stdin_consumer(char* str) {
         getchar();
         return 1;
     }
-    str[strlen(str) - 1] = '\0';
+    str[str_len - 1] = '\0';
     return 0;
 }
 
