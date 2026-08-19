@@ -49,6 +49,24 @@ int read_str(char* prepend_str, char* str, size_t count) {
     return 1;
 }
 
+int establish_connection(struct sockaddr_in s_addr, int in_sock) {
+    int sock;
+    if ( in_sock >= 0 ) {
+        close(in_sock);
+    }
+    if( (sock = socket(AF_INET, SOCK_STREAM, 0)) < 0 ) {
+        printf("Failed to create socket\n");
+        exit(1);
+    }
+    if ( connect(sock, (struct sockaddr*)&s_addr, sizeof(s_addr)) < 0 ) {
+        printf("Socket failed to connect\n");
+        close(sock);
+        exit(1);
+    }
+    return sock;
+}
+
+
 // plan for exiting gracefully, could turn into a messy function depending on the state of the application when called
 // void exit_graceful(int sock)
 
@@ -139,15 +157,7 @@ int main() {
         printf("Not a valid network address for IPv4 address family\n");
         exit(1);
     }
-    if( (sock = socket(AF_INET, SOCK_STREAM, 0)) < 0 ) {
-        printf("Failed to create socket\n");
-        exit(1);
-    }
-    if ( connect(sock, (struct sockaddr*)&s_addr, sizeof(s_addr)) < 0 ) {
-        printf("Socket failed to connect on %s\n", addr);
-        close(sock);
-        exit(1);
-    }
+    sock = establish_connection(s_addr, -1);
     // Construct auth packet
     packet_type = 3;
     packet_len = packet_constructor(packet_w, pswd, pswd_len, packet_type);
@@ -198,6 +208,7 @@ int main() {
             }
             bytes_in_buffer += w_size;
         }
+        bytes_in_buffer = 0;
         packet_type = 200;
         rid_iter++;
         sentinel_packet_rid = rid_iter;
@@ -214,7 +225,8 @@ int main() {
             }
             bytes_in_buffer += s_size;
         }
-        
+
+        printf("wrote sentinel sent\n");
         bytes_in_buffer = 0;
         while (1) {
             while ( bytes_in_buffer < sizeof(packet_len)) {
@@ -228,6 +240,7 @@ int main() {
                 }
                 bytes_in_buffer += r_size;
             }
+            printf("Read packet, confirmed packet_len\n");
 
             memcpy(&packet_len, packet_r + RCON_LEN_OFF, sizeof(packet_len));
             packet_len += sizeof(packet_len);
