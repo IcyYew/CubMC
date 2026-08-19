@@ -165,33 +165,35 @@ int main() {
     // temporary iteration on global for testing
     rid_iter++; 
 
-    // clean up auth packet state
-    memset(packet_w, 0, sizeof(packet_w));
-    memset(packet_r, 0, sizeof(packet_r));
-    if ( read_str("command", cmd, sizeof(cmd)) == 0 ) {
-        printf("Command too large");
-        close(sock);
-        exit(1);
-    }
-    cmd_len = strlen(cmd);
-    packet_type = 2;
-    packet_len = packet_constructor(packet_w, cmd, cmd_len, packet_type);
-    if ( (w_size = write(sock, packet_w, packet_len) ) < 0) {
-        printf("Packet failed to send\n");
-        close(sock);
-        exit(1);
-    }
-    if ( (r_size = read(sock, packet_r, sizeof(packet_r))) < 0) {
-        printf("Packet failed to read\n");
-        close(sock);
-        exit(1);
-    }
-    size_t payload_size = r_size - 14;
-    unsigned char payload_strip[payload_size + 1];
-    memcpy(payload_strip, packet_r + 12, payload_size);
-    payload_strip[payload_size] = '\0';
-    printf("%s\n", payload_strip);
+    while(1) {
+        // clean-up packet state
+        memset(packet_w, 0, sizeof(packet_w));
+        memset(packet_r, 0, sizeof(packet_r));
 
+        if ( read_str("command", cmd, sizeof(cmd)) == 0 ) {
+            printf("Command too large\n");
+            continue;
+        }
+        if ( strcmp(cmd, "exit") == 0) {
+            break;
+        }
+        cmd_len = strlen(cmd);
+        packet_type = 2;
+        packet_len = packet_constructor(packet_w, cmd, cmd_len, packet_type);
+        if ( (w_size = write(sock, packet_w, packet_len) ) < 0) {
+            printf("Packet failed to send\n");
+            continue;
+        }
+        if ( (r_size = read(sock, packet_r, sizeof(packet_r))) < 0) {
+            printf("Packet failed to read\n");
+            continue;
+        }
+        size_t payload_size = r_size - 14;
+        unsigned char payload_strip[payload_size + 1];
+        memcpy(payload_strip, packet_r + 12, payload_size);
+        payload_strip[payload_size] = '\0';
+        printf("%s\n", payload_strip);
+    }
     close(sock);
     return 0;
 }
