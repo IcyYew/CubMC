@@ -106,7 +106,7 @@ int main() {
     size_t bytes_in_buffer = 0;
 
     char* strtol_endptr;
-    int connection_err = 1;
+    int connection_ok = 1;
     if ( read_str("password", pswd, sizeof(pswd)) == 0) {
         printf("Password too large.\n");
         exit(1);
@@ -191,7 +191,7 @@ int main() {
         while (bytes_in_buffer < 4) {
             if ( (r_size = read(sock, packet_r + bytes_in_buffer, sizeof(packet_r) - bytes_in_buffer)) < 0) {
                 printf("Packet failed to read\n");
-                connection_err = 0;
+                connection_ok = 0;
                 break;
             }
             if ( r_size == 0 ) {
@@ -206,7 +206,7 @@ int main() {
         while ( (int32_t)bytes_in_buffer < packet_len ) {
             if ( (r_size = read(sock, packet_r + bytes_in_buffer, sizeof(packet_r) - bytes_in_buffer)) < 0) {
                 printf("Packet failed to read\n");
-                connection_err = 0;
+                connection_ok = 0;
                 break;
             }
             if ( r_size == 0) {
@@ -226,7 +226,7 @@ int main() {
             payload_strip[payload_size] = '\0';
             printf("%s\n", payload_strip);
         }
-        if (connection_err == 0) {
+        if (connection_ok == 0) {
             break;
         }
         rid_iter++;
