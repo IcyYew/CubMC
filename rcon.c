@@ -184,7 +184,7 @@ int main() {
         packet_type = 2;
         packet_len = packet_constructor(packet_w, cmd, cmd_len, packet_type);
         while ( (int32_t)bytes_in_buffer < packet_len ) {
-            if ( (w_size = write(sock, packet_w, packet_len - bytes_in_buffer) ) < 0) {
+            if ( (w_size = write(sock, packet_w + bytes_in_buffer, packet_len - bytes_in_buffer) ) < 0) {
                 printf("Packet failed to send\n");
                 continue;
             }
