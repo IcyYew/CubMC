@@ -193,6 +193,19 @@ int main() {
             }
             bytes_in_buffer += w_size;
         }
+        // int read_packet(int sock, size_t bytes_in_buffer, const char* packet, int32_t packet_len, ssize_t r_size) {
+        //  if ( (r_size = read(sock, packet_r + bytes_in buffer, sizeof(packet_r) - bytes_in_buffer)) < 0) {
+        //      
+        //  }
+        //
+        // }
+        //
+        // mental block, need to reassess
+        //
+        // abstract packet function prototype:
+        // mode = 1 for read, mode = 0 for write
+        // fragmented_packet(int mode, size_t bytes_in_buffer, int32_t packet_len, const char* packet, int sock) {
+        //  if ( (
 
 
         
