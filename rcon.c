@@ -12,6 +12,7 @@
 #define RCON_RID_OFF    4
 #define RCON_TYP_OFF    8
 #define RCON_PLD_OFF   12
+#define SNTL_RID_OFF   10
 
 
 // get char loop isn't my style, this uses scanf to purge stdin up to a newline (for cases in which stdin violates our length requirements for str
@@ -251,7 +252,7 @@ int main() {
 
             bytes_in_buffer = 0;
             packet_type = 200;
-            sentinel_packet_rid = packet_rid + 1;
+            sentinel_packet_rid = packet_rid + SNTL_RID_OFF;
             sentinel_len = strlen(sentinel_pload);
             packet_len = packet_constructor(packet_s, sentinel_pload, sentinel_len, packet_type, sentinel_packet_rid);
             while ( (int32_t)bytes_in_buffer < packet_len ) {
