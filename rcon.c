@@ -193,21 +193,6 @@ int main() {
             }
             bytes_in_buffer += w_size;
         }
-        // int read_packet(int sock, size_t bytes_in_buffer, const char* packet, int32_t packet_len, ssize_t r_size) {
-        //  if ( (r_size = read(sock, packet_r + bytes_in buffer, sizeof(packet_r) - bytes_in_buffer)) < 0) {
-        //      
-        //  }
-        //
-        // }
-        //
-        // mental block, need to reassess
-        //
-        // abstract packet function prototype:
-        // mode = 1 for read, mode = 0 for write
-        // fragmented_packet(int mode, size_t bytes_in_buffer, int32_t packet_len, const char* packet, int sock) {
-        //  if ( (
-
-
         
         bytes_in_buffer = 0;
         // Continue reading until we receive at least enough bytes for the packet_len field
@@ -238,11 +223,7 @@ int main() {
             bytes_in_buffer += r_size;
         }
     
-        if ( (packet_r[packet_len + sizeof(packet_len)] != packet_rid) ){
-            // fragmented multiple packets in one response
-
-            
-        }
+        // happy path, we have a complete packet in the buffer with no other appended bytes or missing bytes
         if ( (int32_t)bytes_in_buffer == packet_len ) {
             // actual payload is bytes in packet_r - three int32 headers and two null terminators
             size_t payload_size = bytes_in_buffer - 14;
@@ -250,6 +231,38 @@ int main() {
             unsigned char payload_strip[payload_size + 1];
             memcpy(payload_strip, packet_r + 12, payload_size);
             payload_strip[payload_size] = '\0';
+            printf("%s\n", payload_strip);
+        }
+
+        if ( (int32_t)bytes_in_buffer > packet_len ) {
+            size_t tail_bytes = bytes_in_buffer - packet_len;
+            size_t tail_size = tail_bytes - 14;
+            unsigned char payload_strip[tail_bytes + 1];
+
+            memmove(packet_r, packet_r + packet_len, tail_bytes);
+
+            memcpy(&packet_len, packet_r + RCON_LEN_OFF, sizeof(packet_len));
+
+            // need to reassess overall handling, trailing bytes need to be treated as a new packet rather than endless conditionals and fall through the
+            // same checks.
+            //
+            // In essence:
+            // After packet_len bytes are consumed -> tail_bytes = bytes_in_buffer - packet_len
+            // memmove tail to the front of the buffer
+            // bytes_in_buffer = tail_bytes
+            // fall through to complete logic again
+            if ( (tail_bytes - sizeof(packet_len)) == packet_len) {
+                // print payload
+            }
+            else if ( (tail_bytes - sizeof(packet_len)) > packet_len) {
+                // loop repeats...
+            }
+            else {
+                //we have pure garbage if < packet_len
+            }
+
+
+            payload_strip[good_bytes] = '\0';
             printf("%s\n", payload_strip);
         }
         if (connection_ok == 0) {
