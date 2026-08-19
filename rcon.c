@@ -84,11 +84,14 @@ int32_t packet_constructor(unsigned char* packet, const char* payload, size_t pa
 int main() {
     unsigned char packet_w[1460];
     unsigned char packet_r[4110];
+    unsigned char packet_s[1460]; 
     ssize_t w_size;
     ssize_t r_size;
+    ssize_t s_size;
     int32_t packet_len;
     int32_t packet_rid;
     int32_t packet_type;
+    int32_t sentinel_packet_rid;
     struct sockaddr_in s_addr = {0};
     int sock;
     char pswd[50] = "";
@@ -193,9 +196,23 @@ int main() {
             }
             bytes_in_buffer += w_size;
         }
+        packet_type = 200;
+        rid_iter++;
+        sentinel_packet_rid = rid_iter;
+        packet_len = packet_constructor(packet_s, cmd, cmd_len, packet_type);
+        rid_iter--;
+        while ( (int32_t)bytes_in_buffer < packet_len ) {
+            if ( (s_size = write(sock, packet_s + bytes_in_buffer, packet_len - bytes_in_buffer) ) < 0) {
+                printf("Packet failed to send\n");
+                continue;
+            }
+            if ( s_size == 0 ) {
+                // connection broken, need to re-establish on new sock
+            }
+            bytes_in_buffer += s_size;
+        }
         
         bytes_in_buffer = 0;
-            // Continue reading until we receive at least enough bytes for the packet_len field
         while (1) {
             while ( bytes_in_buffer < sizeof(packet_len)) {
                 if ( (r_size = read(sock, packet_r + bytes_in_buffer, sizeof(packet_r) - bytes_in_buffer)) < 0) {
@@ -224,7 +241,7 @@ int main() {
                 bytes_in_buffer += r_size;
             }
         
-            size_t payload_size = bytes_in_buffer - 14;
+            size_t payload_size = packet_len - 14;
             unsigned char payload_strip[payload_size + 1];
             memcpy(payload_strip, packet_r + 12, payload_size);
             payload_strip[payload_size] = '\0';
@@ -234,6 +251,10 @@ int main() {
                 break;
             }
 
+            memcpy(&packet_rid, packet_r + RCON_RID_OFF, sizeof(packet_rid));
+            if ( packet_rid == sentinel_packet_rid ) {
+                break;
+            }
             memmove(packet_r, packet_r + packet_len, bytes_in_buffer);
 
         }
