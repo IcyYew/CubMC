@@ -72,8 +72,6 @@ int establish_connection(struct sockaddr_in s_addr, int in_sock) {
 
 
 
-int32_t rid_iter = 1;
-
 // Constructs an RCON packet, unsigned char* packet is to be written into, unsigned char* payload is the string payload passed from the function call
 // size_t payload_count is the length of that payload, and packet_type is what type of packet we have
 // Internally, the variable packet_len is used as both the RCON length field and then re-used as the overrall packet buffer size
@@ -82,11 +80,11 @@ int32_t rid_iter = 1;
 // The function returns packet_len as the total packet buffer size for use in subsequent read/write handling after this function is called
 // An important note that this function relies on the global variable rid_iter, and the expectation is that rid_iter be iterated upon after the packet
 // referenced by it is completely serialized and handled after this function call
-int32_t packet_constructor(unsigned char* packet, const char* payload, size_t payload_count, int32_t packet_type) {
+int32_t packet_constructor(unsigned char* packet, const char* payload, size_t payload_count, int32_t packet_type, int packet_rid) {
     // RCON length field
-    int32_t packet_len = sizeof(packet_type) + sizeof(rid_iter) + payload_count + 2;
+    int32_t packet_len = sizeof(packet_type) + sizeof(packet_rid) + payload_count + 2;
     memcpy(packet, &packet_len, sizeof(packet_len));
-    memcpy(packet + RCON_RID_OFF, &rid_iter, sizeof(rid_iter));
+    memcpy(packet + RCON_RID_OFF, &packet_rid, sizeof(packet_rid));
     memcpy(packet + RCON_TYP_OFF, &packet_type, sizeof(packet_type));
     memcpy(packet + RCON_PLD_OFF, payload, payload_count);
     // Re-use variable, now is total buffer size
@@ -109,6 +107,7 @@ int main() {
     ssize_t s_size;
     int32_t packet_len;
     int32_t packet_rid;
+    int32_t packet_s_rid;
     int32_t packet_type;
     int32_t sentinel_packet_rid;
     struct sockaddr_in s_addr = {0};
@@ -160,7 +159,8 @@ int main() {
     sock = establish_connection(s_addr, -1);
     // Construct auth packet
     packet_type = 3;
-    packet_len = packet_constructor(packet_w, pswd, pswd_len, packet_type);
+    packet_rid = 1;
+    packet_len = packet_constructor(packet_w, pswd, pswd_len, packet_type, packet_rid);
     if ( (w_size = write(sock, packet_w, packet_len) ) < 0) {
         printf("Packet failed to send\n");
         close(sock);
@@ -172,16 +172,14 @@ int main() {
         exit(1);
     }
 
-    memcpy(&packet_rid, packet_r + RCON_RID_OFF, sizeof(packet_rid));
     memcpy(&packet_type, packet_r + RCON_TYP_OFF, sizeof(packet_rid));
     if (packet_rid != 1 || packet_type != 2) {
         printf("Auth unsuccessful\n");
         close(sock);
         exit(1);
     }
-    // !!!
-    // temporary iteration on global for testing
-    rid_iter++; 
+
+    packet_rid++;
 
     while(1) {
         // clean-up packet state
@@ -197,7 +195,7 @@ int main() {
         }
         cmd_len = strlen(cmd);
         packet_type = 2;
-        packet_len = packet_constructor(packet_w, cmd, cmd_len, packet_type);
+        packet_len = packet_constructor(packet_w, cmd, cmd_len, packet_type, packet_rid);
         while ( (int32_t)bytes_in_buffer < packet_len ) {
             if ( (w_size = write(sock, packet_w + bytes_in_buffer, packet_len - bytes_in_buffer) ) < 0) {
                 printf("Packet failed to send\n");
@@ -208,27 +206,10 @@ int main() {
             }
             bytes_in_buffer += w_size;
         }
-        bytes_in_buffer = 0;
-        packet_type = 200;
-        rid_iter++;
-        sentinel_packet_rid = rid_iter;
-        sentinel_len = strlen(sentinel_pload);
-        packet_len = packet_constructor(packet_s, sentinel_pload, sentinel_len, packet_type);
-        rid_iter--;
-        while ( (int32_t)bytes_in_buffer < packet_len ) {
-            if ( (s_size = write(sock, packet_s + bytes_in_buffer, packet_len - bytes_in_buffer) ) < 0) {
-                printf("Packet failed to send\n");
-                continue;
-            }
-            if ( s_size == 0 ) {
-                // connection broken, need to re-establish on new sock
-            }
-            bytes_in_buffer += s_size;
-        }
 
-        printf("wrote sentinel sent\n");
         bytes_in_buffer = 0;
         while (1) {
+            bytes_in_buffer = 0;
             while ( bytes_in_buffer < sizeof(packet_len)) {
                 if ( (r_size = read(sock, packet_r + bytes_in_buffer, sizeof(packet_r) - bytes_in_buffer)) < 0) {
                     printf("Packet failed to read\n");
@@ -240,7 +221,6 @@ int main() {
                 }
                 bytes_in_buffer += r_size;
             }
-            printf("Read packet, confirmed packet_len\n");
 
             memcpy(&packet_len, packet_r + RCON_LEN_OFF, sizeof(packet_len));
             packet_len += sizeof(packet_len);
@@ -252,7 +232,7 @@ int main() {
                     break;
                 }
                 if ( r_size == 0) {
-                    // connection broken, need to re-estalish on new sock, massive overhaul
+                    // connection broken
                 }
                 bytes_in_buffer += r_size;
             }
@@ -261,19 +241,38 @@ int main() {
             unsigned char payload_strip[payload_size + 1];
             memcpy(payload_strip, packet_r + 12, payload_size);
             payload_strip[payload_size] = '\0';
-            printf("%s\n", payload_strip);
             bytes_in_buffer -= packet_len;
-            memcpy(&packet_rid, packet_r + RCON_RID_OFF, sizeof(packet_rid));
-            if ( packet_rid == sentinel_packet_rid ) {
+            memcpy(&packet_s_rid, packet_r + RCON_RID_OFF, sizeof(packet_s_rid));
+            if ( packet_s_rid == sentinel_packet_rid ) {
                 break;
             }
             memmove(packet_r, packet_r + packet_len, bytes_in_buffer);
 
+
+            bytes_in_buffer = 0;
+            packet_type = 200;
+            sentinel_packet_rid = packet_rid + 1;
+            sentinel_len = strlen(sentinel_pload);
+            packet_len = packet_constructor(packet_s, sentinel_pload, sentinel_len, packet_type, sentinel_packet_rid);
+            while ( (int32_t)bytes_in_buffer < packet_len ) {
+                if ( (s_size = write(sock, packet_s + bytes_in_buffer, packet_len - bytes_in_buffer) ) < 0) {
+                    printf("Packet failed to send\n");
+                    continue;
+                }
+                if ( s_size == 0 ) {
+                    // connection broken, need to re-establish on new sock
+                }
+                bytes_in_buffer += s_size;
+            }
+            printf("%s\n", payload_strip);
+
         }
+
         if (connection_ok == 0) {
             break;
         }
-        rid_iter++;
+
+        packet_rid++;
     }
     close(sock);
     return 0;
