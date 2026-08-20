@@ -210,7 +210,6 @@ int main() {
 
         bytes_in_buffer = 0;
         while (1) {
-            bytes_in_buffer = 0;
             while ( bytes_in_buffer < sizeof(packet_len)) {
                 if ( (r_size = read(sock, packet_r + bytes_in_buffer, sizeof(packet_r) - bytes_in_buffer)) < 0) {
                     printf("Packet failed to read\n");
@@ -250,20 +249,21 @@ int main() {
             memmove(packet_r, packet_r + packet_len, bytes_in_buffer);
 
 
-            bytes_in_buffer = 0;
+            // temporary variable to fix regression
+            size_t bytes_in_buffer_s = 0;
             packet_type = 200;
             sentinel_packet_rid = packet_rid + SNTL_RID_OFF;
             sentinel_len = strlen(sentinel_pload);
             packet_len = packet_constructor(packet_s, sentinel_pload, sentinel_len, packet_type, sentinel_packet_rid);
-            while ( (int32_t)bytes_in_buffer < packet_len ) {
-                if ( (s_size = write(sock, packet_s + bytes_in_buffer, packet_len - bytes_in_buffer) ) < 0) {
+            while ( (int32_t)bytes_in_buffer_s < packet_len ) {
+                if ( (s_size = write(sock, packet_s + bytes_in_buffer_s, packet_len - bytes_in_buffer_s) ) < 0) {
                     printf("Packet failed to send\n");
                     continue;
                 }
                 if ( s_size == 0 ) {
                     // connection broken, need to re-establish on new sock
                 }
-                bytes_in_buffer += s_size;
+                bytes_in_buffer_s += s_size;
             }
             printf("%s\n", payload_strip);
 
