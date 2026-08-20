@@ -96,6 +96,38 @@ int32_t packet_constructor(unsigned char* packet, const char* payload, size_t pa
     return packet_len;
 }
 
+// no return value, a failure exits the program currently anyways. works for now, not permanent anyways
+void intake_setup(char* pswd, char* addr, char* port, size_t pswd_count, size_t addr_count, size_t port_count, struct sockaddr_in* s_addr) {
+    char* strtol_endptr;
+    int l_port;
+    if ( read_str("password", pswd, pswd_count) == 0) {
+        printf("Password too large.\n");
+        exit(1);
+    }
+    if ( read_str("address", addr, addr_count) == 0) {
+        printf("Address too large\n");
+        exit(1);
+    }
+    read_str("port", port, port_count);
+    l_port = strtol(port, &strtol_endptr, 10);
+    if ( *strtol_endptr != '\0' || strtol_endptr == port ) {
+        printf("No port conversion, not numerical or garbage-addled\n");
+        exit(1);
+    }
+
+    if ( l_port < 1024 || l_port > 65535 ) {
+        printf("Port not within valid range.\n");
+        exit(1);
+    }
+    s_addr->sin_family = AF_INET;
+    s_addr->sin_port = htons(l_port);
+    // a conditional check for invalid address family (i.e. ret < 0) is not needed here since it is hardcoded
+    if ( inet_pton(s_addr->sin_family, addr, &s_addr->sin_addr) == 0 ) {
+        printf("Not a valid network address for IPv4 address family\n");
+        exit(1);
+    }
+}
+
 
 
 int main() {
@@ -119,7 +151,6 @@ int main() {
     // allow for ports up to max of 5 chars, allocated 7 bytes to account for \n and \0 in current input validation
     char port[7] = "";
     char cmd[1440] = ""; // not exactly its maximum allocation to give some breathing room, upper bound may even need lowered
-    int l_port;
 
     // these two variables can be generalized into a payload_len
     size_t pswd_len;
@@ -128,35 +159,11 @@ int main() {
     
     size_t bytes_in_buffer = 0;
 
-    char* strtol_endptr;
     int connection_ok = 1;
-    if ( read_str("password", pswd, sizeof(pswd)) == 0) {
-        printf("Password too large.\n");
-        exit(1);
-    }
-    if ( read_str("address", addr, sizeof(addr)) == 0) {
-        printf("Address too large\n");
-        exit(1);
-    }
-    read_str("port", port, sizeof(port));
-    l_port = strtol(port, &strtol_endptr, 10);
-    if ( *strtol_endptr != '\0' || strtol_endptr == port ) {
-        printf("No port conversion, not numerical or garbage-addled\n");
-        exit(1);
-    }
+    intake_setup(pswd, addr, port, sizeof(pswd), sizeof(addr), sizeof(port), &s_addr);
 
-    if ( l_port < 1024 || l_port > 65535 ) {
-        printf("Port not within valid range.\n");
-        exit(1);
-    }
     pswd_len = strlen(pswd);
-    s_addr.sin_family = AF_INET;
-    s_addr.sin_port = htons(l_port);
-    // a conditional check for invalid address family (i.e. ret < 0) is not needed here since it is hardcoded
-    if ( inet_pton(s_addr.sin_family, addr, &s_addr.sin_addr) == 0 ) {
-        printf("Not a valid network address for IPv4 address family\n");
-        exit(1);
-    }
+
     sock = establish_connection(s_addr, -1);
     // Construct auth packet
     packet_type = 3;
