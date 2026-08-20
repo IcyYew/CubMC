@@ -199,7 +199,6 @@ int main() {
     unsigned char packet_r[4110];
     unsigned char packet_s[1460];
     char sentinel_pload[] = "Invalid payload";
-    ssize_t s_size;
     int32_t packet_len;
     int32_t packet_rid = 1;
     int32_t packet_s_rid;
@@ -224,6 +223,7 @@ int main() {
     int connection_ok = 1;
     int write_ret = 0;
     int read_ret = 0;
+    int sentinel_sent = 0;
     intake_setup(pswd, addr, port, sizeof(pswd), sizeof(addr), sizeof(port), &s_addr);
 
     pswd_len = strlen(pswd);
@@ -239,6 +239,7 @@ int main() {
         memset(packet_w, 0, sizeof(packet_w));
         memset(packet_r, 0, sizeof(packet_r));
         bytes_in_buffer = 0;
+        sentinel_sent = 0;
         if ( read_str("command", cmd, sizeof(cmd)) == 0 ) {
             printf("Command too large\n");
             continue;
@@ -292,25 +293,27 @@ int main() {
             if ( packet_s_rid == sentinel_packet_rid ) {
                 break;
             }
+
             memmove(packet_r, packet_r + packet_len, bytes_in_buffer);
 
 
             // temporary variable to fix regression
-            size_t bytes_in_buffer_s = 0;
-            packet_type = 200;
-            sentinel_packet_rid = packet_rid + SNTL_RID_OFF;
-            sentinel_len = strlen(sentinel_pload);
-            packet_len = packet_constructor(packet_s, sentinel_pload, sentinel_len, packet_type, sentinel_packet_rid);
-            while ( (int32_t)bytes_in_buffer_s < packet_len ) {
-                if ( (s_size = write(sock, packet_s + bytes_in_buffer_s, packet_len - bytes_in_buffer_s) ) < 0) {
-                    printf("Packet failed to send\n");
-                    continue;
+            if ( !sentinel_sent ) {
+                packet_type = 200;
+                sentinel_packet_rid = packet_rid + SNTL_RID_OFF;
+                sentinel_len = strlen(sentinel_pload);
+                packet_len = packet_constructor(packet_s, sentinel_pload, sentinel_len, packet_type, sentinel_packet_rid);
+                if ( (write_ret = write_all(packet_len, packet_s, sock)) == 1) {
+                    sock = establish_connection(s_addr, sock);
+                    authenticate(pswd, pswd_len, packet_rid, packet_w, packet_r, sizeof(packet_r), sock, s_addr);
+                    break;
                 }
-                if ( s_size == 0 ) {
-                    // connection broken, need to re-establish on new sock
+                else if ( read_ret == -1 ) {
+                    break;
                 }
-                bytes_in_buffer_s += s_size;
+                sentinel_sent = 1;
             }
+
             printf("%s\n", payload_strip);
 
         }
