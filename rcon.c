@@ -128,6 +128,37 @@ void intake_setup(char* pswd, char* addr, char* port, size_t pswd_count, size_t 
     }
 }
 
+// when other helper functions are made this should be cleaner
+// much like with intake_setup, returns nothing becauses we exit in failure, this one will need changed!!!
+void authenticate(const char* pswd, size_t pswd_len, int32_t packet_rid, unsigned char* packet_w, unsigned char* packet_r,
+        size_t packet_r_count, int in_sock) {
+    int32_t packet_type = 3; // declared locally, no need to pass
+    ssize_t w_size;
+    ssize_t r_size;
+    int32_t packet_rid_auth;
+    int32_t packet_len;
+    packet_len = packet_constructor(packet_w, pswd, pswd_len, packet_type, packet_rid);
+    if ( (w_size = write(in_sock, packet_w, packet_len) ) < 0) {
+        printf("Packet failed to send\n");
+        close(in_sock);
+        exit(1);
+    }
+    if ( (r_size = read(in_sock, packet_r, packet_r_count)) < 0) {
+        printf("Packet failed to read\n");
+        close(in_sock);
+        exit(1);
+    }
+
+    memcpy(&packet_rid_auth, packet_r + RCON_RID_OFF, sizeof(packet_rid_auth));
+    memcpy(&packet_type, packet_r + RCON_TYP_OFF, sizeof(packet_type));
+    if (packet_rid != 1 || packet_type != 2) {
+        printf("Auth unsuccessful\n");
+        close(in_sock);
+        exit(1);
+    }
+
+}
+
 
 
 int main() {
@@ -139,7 +170,7 @@ int main() {
     ssize_t r_size;
     ssize_t s_size;
     int32_t packet_len;
-    int32_t packet_rid;
+    int32_t packet_rid = 1;
     int32_t packet_s_rid;
     int32_t packet_type;
     int32_t sentinel_packet_rid;
@@ -165,27 +196,8 @@ int main() {
     pswd_len = strlen(pswd);
 
     sock = establish_connection(s_addr, -1);
-    // Construct auth packet
-    packet_type = 3;
-    packet_rid = 1;
-    packet_len = packet_constructor(packet_w, pswd, pswd_len, packet_type, packet_rid);
-    if ( (w_size = write(sock, packet_w, packet_len) ) < 0) {
-        printf("Packet failed to send\n");
-        close(sock);
-        exit(1);
-    }
-    if ( (r_size = read(sock, packet_r, sizeof(packet_r))) < 0) {
-        printf("Packet failed to read\n");
-        close(sock);
-        exit(1);
-    }
 
-    memcpy(&packet_type, packet_r + RCON_TYP_OFF, sizeof(packet_rid));
-    if (packet_rid != 1 || packet_type != 2) {
-        printf("Auth unsuccessful\n");
-        close(sock);
-        exit(1);
-    }
+    authenticate(pswd, pswd_len, packet_rid, packet_w, packet_r, sizeof(packet_r), sock);
 
     packet_rid++;
 
