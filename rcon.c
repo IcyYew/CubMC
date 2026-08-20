@@ -67,6 +67,22 @@ int establish_connection(struct sockaddr_in s_addr, int in_sock) {
     return sock;
 }
 
+int write_all(int32_t packet_len, unsigned char* packet, int in_sock) {
+    size_t bytes_in_buffer = 0;
+    ssize_t w_size;
+    while ( (int32_t)bytes_in_buffer < packet_len ) {
+        if ( (w_size = write(in_sock, packet + bytes_in_buffer, packet_len - bytes_in_buffer) ) < 0) {
+            printf("Packet failed to send\n");
+            return -1;
+        }
+        if ( w_size == 0 ) {
+            return 1;
+        }
+        bytes_in_buffer += w_size;
+    }
+    return 0;
+}
+
 
 // plan for exiting gracefully, could turn into a messy function depending on the state of the application when called
 // void exit_graceful(int sock)
@@ -131,18 +147,21 @@ void intake_setup(char* pswd, char* addr, char* port, size_t pswd_count, size_t 
 // when other helper functions are made this should be cleaner
 // much like with intake_setup, returns nothing becauses we exit in failure, this one will need changed!!!
 void authenticate(const char* pswd, size_t pswd_len, int32_t packet_rid, unsigned char* packet_w, unsigned char* packet_r,
-        size_t packet_r_count, int in_sock) {
+        size_t packet_r_count, int in_sock, struct sockaddr_in s_addr) {
     int32_t packet_type = 3; // declared locally, no need to pass
-    ssize_t w_size;
     ssize_t r_size;
     int32_t packet_rid_auth;
     int32_t packet_len;
+    int write_ret = 0;
     packet_len = packet_constructor(packet_w, pswd, pswd_len, packet_type, packet_rid);
-    if ( (w_size = write(in_sock, packet_w, packet_len) ) < 0) {
-        printf("Packet failed to send\n");
-        close(in_sock);
+    if ( (write_ret = write_all(packet_len, packet_w, in_sock)) == 1 ) {
+        in_sock = establish_connection(s_addr, in_sock);
+    }
+    else if ( write_ret == -1 ) {
+        // if we reach this case in auth we are cooked anyways
         exit(1);
     }
+
     if ( (r_size = read(in_sock, packet_r, packet_r_count)) < 0) {
         printf("Packet failed to read\n");
         close(in_sock);
@@ -166,7 +185,6 @@ int main() {
     unsigned char packet_r[4110];
     unsigned char packet_s[1460];
     char sentinel_pload[] = "Invalid payload";
-    ssize_t w_size;
     ssize_t r_size;
     ssize_t s_size;
     int32_t packet_len;
@@ -191,13 +209,14 @@ int main() {
     size_t bytes_in_buffer = 0;
 
     int connection_ok = 1;
+    int write_ret = 0;
     intake_setup(pswd, addr, port, sizeof(pswd), sizeof(addr), sizeof(port), &s_addr);
 
     pswd_len = strlen(pswd);
 
     sock = establish_connection(s_addr, -1);
 
-    authenticate(pswd, pswd_len, packet_rid, packet_w, packet_r, sizeof(packet_r), sock);
+    authenticate(pswd, pswd_len, packet_rid, packet_w, packet_r, sizeof(packet_r), sock, s_addr);
 
     packet_rid++;
 
@@ -216,18 +235,16 @@ int main() {
         cmd_len = strlen(cmd);
         packet_type = 2;
         packet_len = packet_constructor(packet_w, cmd, cmd_len, packet_type, packet_rid);
-        while ( (int32_t)bytes_in_buffer < packet_len ) {
-            if ( (w_size = write(sock, packet_w + bytes_in_buffer, packet_len - bytes_in_buffer) ) < 0) {
-                printf("Packet failed to send\n");
-                continue;
-            }
-            if ( w_size == 0 ) {
-                // connection broken, need to re-establish on new sock
-            }
-            bytes_in_buffer += w_size;
+        
+        if ( (write_ret = write_all(packet_len, packet_w, sock)) == 1 ) {
+            sock = establish_connection(s_addr, sock);
+            authenticate(pswd, pswd_len, packet_rid, packet_w, packet_r, sizeof(packet_r), sock, s_addr);
+            continue;
+        }
+        else if ( write_ret == -1 ) {
+            continue;
         }
 
-        bytes_in_buffer = 0;
         while (1) {
             while ( bytes_in_buffer < sizeof(packet_len)) {
                 if ( (r_size = read(sock, packet_r + bytes_in_buffer, sizeof(packet_r) - bytes_in_buffer)) < 0) {
