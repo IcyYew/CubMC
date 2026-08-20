@@ -308,7 +308,7 @@ int main() {
                     authenticate(pswd, pswd_len, packet_rid, packet_w, packet_r, sizeof(packet_r), sock, s_addr);
                     break;
                 }
-                else if ( read_ret == -1 ) {
+                else if ( write_ret == -1 ) {
                     break;
                 }
                 sentinel_sent = 1;
