@@ -67,11 +67,11 @@ int establish_connection(struct sockaddr_in s_addr, int in_sock) {
     return sock;
 }
 
-int write_all(int32_t packet_len, unsigned char* packet, int in_sock) {
+int write_all(size_t packet_size, unsigned char* packet, int in_sock) {
     size_t bytes_in_buffer = 0;
     ssize_t w_size;
-    while ( (int32_t)bytes_in_buffer < packet_len ) {
-        if ( (w_size = write(in_sock, packet + bytes_in_buffer, packet_len - bytes_in_buffer) ) < 0) {
+    while ( bytes_in_buffer < packet_size ) {
+        if ( (w_size = write(in_sock, packet + bytes_in_buffer, packet_size - bytes_in_buffer) ) < 0) {
             printf("Packet failed to send\n");
             return -1;
         }
@@ -82,10 +82,10 @@ int write_all(int32_t packet_len, unsigned char* packet, int in_sock) {
     }
     return 0;
 }
-int read_all(size_t* bytes_in_buffer, unsigned char* packet, size_t packet_count, int32_t target, int in_sock) {
+int read_all(size_t* bytes_in_buffer, unsigned char* packet, size_t packet_size, int32_t target, int in_sock) {
     ssize_t r_size;
     while ( (int32_t)*bytes_in_buffer < target) {
-        if ( (r_size = read(in_sock, packet + *bytes_in_buffer, packet_count - *bytes_in_buffer)) < 0) {
+        if ( (r_size = read(in_sock, packet + *bytes_in_buffer, packet_size - *bytes_in_buffer)) < 0) {
             printf("Packet failed to read\n");
             return -1;
         }
@@ -111,19 +111,20 @@ int read_all(size_t* bytes_in_buffer, unsigned char* packet, size_t packet_count
 // The function returns packet_len as the total packet buffer size for use in subsequent read/write handling after this function is called
 // An important note that this function relies on the global variable rid_iter, and the expectation is that rid_iter be iterated upon after the packet
 // referenced by it is completely serialized and handled after this function call
-int32_t packet_constructor(unsigned char* packet, const char* payload, size_t payload_count, int32_t packet_type, int packet_rid) {
+size_t packet_constructor(unsigned char* packet, const char* payload, size_t payload_count, int32_t packet_type, int packet_rid) {
     // RCON length field
     int32_t packet_len = sizeof(packet_type) + sizeof(packet_rid) + payload_count + 2;
+    size_t packet_size;
     memcpy(packet, &packet_len, sizeof(packet_len));
     memcpy(packet + RCON_RID_OFF, &packet_rid, sizeof(packet_rid));
     memcpy(packet + RCON_TYP_OFF, &packet_type, sizeof(packet_type));
     memcpy(packet + RCON_PLD_OFF, payload, payload_count);
     // Re-use variable, now is total buffer size
-    packet_len += sizeof(packet_len);
+    packet_size = sizeof(packet_len) + packet_len;
     // write two null terminators per RCON spec
-    packet[packet_len - 2] = '\0';
-    packet[packet_len - 1] = '\0';
-    return packet_len;
+    packet[packet_size - 2] = '\0';
+    packet[packet_size - 1] = '\0';
+    return packet_size;
 }
 
 // no return value, a failure exits the program currently anyways. works for now, not permanent anyways
@@ -165,10 +166,10 @@ void authenticate(const char* pswd, size_t pswd_len, int32_t packet_rid, unsigne
     int32_t packet_type = 3; // declared locally, no need to pass
     ssize_t r_size;
     int32_t packet_rid_auth;
-    int32_t packet_len;
+    size_t packet_size;
     int write_ret = 0;
-    packet_len = packet_constructor(packet_w, pswd, pswd_len, packet_type, packet_rid);
-    if ( (write_ret = write_all(packet_len, packet_w, in_sock)) == 1 ) {
+    packet_size = packet_constructor(packet_w, pswd, pswd_len, packet_type, packet_rid);
+    if ( (write_ret = write_all(packet_size, packet_w, in_sock)) == 1 ) {
         in_sock = establish_connection(s_addr, in_sock);
     }
     else if ( write_ret == -1 ) {
@@ -199,7 +200,8 @@ int main() {
     unsigned char packet_r[4110];
     unsigned char packet_s[1460];
     char sentinel_pload[] = "Invalid payload";
-    int32_t packet_len;
+    int32_t packet_len; // rcon length field
+    size_t  packet_size; // size of complete packet, headers + payload + null terminators
     int32_t packet_rid = 1;
     int32_t packet_s_rid;
     int32_t packet_type;
@@ -220,7 +222,6 @@ int main() {
     
     size_t bytes_in_buffer = 0;
 
-    int connection_ok = 1;
     int write_ret = 0;
     int read_ret = 0;
     int sentinel_sent = 0;
@@ -249,9 +250,9 @@ int main() {
         }
         cmd_len = strlen(cmd);
         packet_type = 2;
-        packet_len = packet_constructor(packet_w, cmd, cmd_len, packet_type, packet_rid);
+        packet_size = packet_constructor(packet_w, cmd, cmd_len, packet_type, packet_rid);
         
-        if ( (write_ret = write_all(packet_len, packet_w, sock)) == 1 ) {
+        if ( (write_ret = write_all(packet_size, packet_w, sock)) == 1 ) {
             sock = establish_connection(s_addr, sock);
             authenticate(pswd, pswd_len, packet_rid, packet_w, packet_r, sizeof(packet_r), sock, s_addr);
             continue;
@@ -262,7 +263,6 @@ int main() {
 
         while (1) {
     
-
             if ( (read_ret = read_all(&bytes_in_buffer, packet_r, sizeof(packet_r), sizeof(packet_len), sock)) == 1 ) {
                 sock = establish_connection(s_addr, sock);
                 authenticate(pswd, pswd_len, packet_rid, packet_w, packet_r, sizeof(packet_r), sock, s_addr);
@@ -273,9 +273,9 @@ int main() {
             }
 
             memcpy(&packet_len, packet_r + RCON_LEN_OFF, sizeof(packet_len));
-            packet_len += sizeof(packet_len);
+            packet_size = sizeof(packet_len) + packet_len;
 
-            if ( (read_ret = read_all(&bytes_in_buffer, packet_r, sizeof(packet_r), packet_len, sock)) == 1) {
+            if ( (read_ret = read_all(&bytes_in_buffer, packet_r, sizeof(packet_r), packet_size, sock)) == 1) {
                 sock = establish_connection(s_addr, sock);
                 authenticate(pswd, pswd_len, packet_rid, packet_w, packet_r, sizeof(packet_r), sock, s_addr);
                 break;
@@ -284,11 +284,11 @@ int main() {
                 break;
             }
         
-            size_t payload_size = packet_len - 14;
+            size_t payload_size = packet_size - 14;
             unsigned char payload_strip[payload_size + 1];
             memcpy(payload_strip, packet_r + 12, payload_size);
             payload_strip[payload_size] = '\0';
-            bytes_in_buffer -= packet_len;
+            bytes_in_buffer -= packet_size;
             memcpy(&packet_s_rid, packet_r + RCON_RID_OFF, sizeof(packet_s_rid));
             if ( packet_s_rid == sentinel_packet_rid ) {
                 break;
@@ -297,13 +297,12 @@ int main() {
             memmove(packet_r, packet_r + packet_len, bytes_in_buffer);
 
 
-            // temporary variable to fix regression
             if ( !sentinel_sent ) {
                 packet_type = 200;
                 sentinel_packet_rid = packet_rid + SNTL_RID_OFF;
                 sentinel_len = strlen(sentinel_pload);
-                packet_len = packet_constructor(packet_s, sentinel_pload, sentinel_len, packet_type, sentinel_packet_rid);
-                if ( (write_ret = write_all(packet_len, packet_s, sock)) == 1) {
+                packet_size = packet_constructor(packet_s, sentinel_pload, sentinel_len, packet_type, sentinel_packet_rid);
+                if ( (write_ret = write_all(packet_size, packet_s, sock)) == 1) {
                     sock = establish_connection(s_addr, sock);
                     authenticate(pswd, pswd_len, packet_rid, packet_w, packet_r, sizeof(packet_r), sock, s_addr);
                     break;
@@ -317,11 +316,6 @@ int main() {
             printf("%s\n", payload_strip);
 
         }
-
-        if (connection_ok == 0) {
-            break;
-        }
-
         packet_rid++;
     }
     close(sock);
