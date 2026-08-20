@@ -82,6 +82,20 @@ int write_all(int32_t packet_len, unsigned char* packet, int in_sock) {
     }
     return 0;
 }
+int read_all(size_t* bytes_in_buffer, unsigned char* packet, size_t packet_count, int32_t target, int in_sock) {
+    ssize_t r_size;
+    while ( (int32_t)*bytes_in_buffer < target) {
+        if ( (r_size = read(in_sock, packet + *bytes_in_buffer, packet_count - *bytes_in_buffer)) < 0) {
+            printf("Packet failed to read\n");
+            return -1;
+        }
+        if ( r_size == 0 ) {
+            return 1;
+        }
+        *bytes_in_buffer += r_size;
+    }
+    return 0;
+}
 
 
 // plan for exiting gracefully, could turn into a messy function depending on the state of the application when called
@@ -185,7 +199,6 @@ int main() {
     unsigned char packet_r[4110];
     unsigned char packet_s[1460];
     char sentinel_pload[] = "Invalid payload";
-    ssize_t r_size;
     ssize_t s_size;
     int32_t packet_len;
     int32_t packet_rid = 1;
@@ -210,6 +223,7 @@ int main() {
 
     int connection_ok = 1;
     int write_ret = 0;
+    int read_ret = 0;
     intake_setup(pswd, addr, port, sizeof(pswd), sizeof(addr), sizeof(port), &s_addr);
 
     pswd_len = strlen(pswd);
@@ -246,31 +260,27 @@ int main() {
         }
 
         while (1) {
-            while ( bytes_in_buffer < sizeof(packet_len)) {
-                if ( (r_size = read(sock, packet_r + bytes_in_buffer, sizeof(packet_r) - bytes_in_buffer)) < 0) {
-                    printf("Packet failed to read\n");
-                    connection_ok = 0;
-                    break;
-                }
-                if ( r_size == 0 ) {
-                    // connection broken, need to re-establish on new sock, massive overhaul
-                }
-                bytes_in_buffer += r_size;
+    
+
+            if ( (read_ret = read_all(&bytes_in_buffer, packet_r, sizeof(packet_r), sizeof(packet_len), sock)) == 1 ) {
+                sock = establish_connection(s_addr, sock);
+                authenticate(pswd, pswd_len, packet_rid, packet_w, packet_r, sizeof(packet_r), sock, s_addr);
+                break;
+            }
+            else if ( read_ret == -1 ) {
+                break;
             }
 
             memcpy(&packet_len, packet_r + RCON_LEN_OFF, sizeof(packet_len));
             packet_len += sizeof(packet_len);
 
-            while ( (int32_t)bytes_in_buffer < packet_len ) {
-                if ( (r_size = read(sock, packet_r + bytes_in_buffer, sizeof(packet_r) - bytes_in_buffer)) < 0) {
-                    printf("Packet failed to read\n");
-                    connection_ok = 0;
-                    break;
-                }
-                if ( r_size == 0) {
-                    // connection broken
-                }
-                bytes_in_buffer += r_size;
+            if ( (read_ret = read_all(&bytes_in_buffer, packet_r, packet_len, sizeof(packet_len), sock)) == 1) {
+                sock = establish_connection(s_addr, sock);
+                authenticate(pswd, pswd_len, packet_rid, packet_w, packet_r, sizeof(packet_r), sock, s_addr);
+                break;
+            }
+            else if ( read_ret == -1 ) {
+                break;
             }
         
             size_t payload_size = packet_len - 14;
