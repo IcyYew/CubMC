@@ -274,7 +274,7 @@ int main() {
             memcpy(&packet_len, packet_r + RCON_LEN_OFF, sizeof(packet_len));
             packet_len += sizeof(packet_len);
 
-            if ( (read_ret = read_all(&bytes_in_buffer, packet_r, packet_len, sizeof(packet_len), sock)) == 1) {
+            if ( (read_ret = read_all(&bytes_in_buffer, packet_r, sizeof(packet_r), packet_len, sock)) == 1) {
                 sock = establish_connection(s_addr, sock);
                 authenticate(pswd, pswd_len, packet_rid, packet_w, packet_r, sizeof(packet_r), sock, s_addr);
                 break;
