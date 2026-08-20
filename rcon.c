@@ -151,7 +151,7 @@ void authenticate(const char* pswd, size_t pswd_len, int32_t packet_rid, unsigne
 
     memcpy(&packet_rid_auth, packet_r + RCON_RID_OFF, sizeof(packet_rid_auth));
     memcpy(&packet_type, packet_r + RCON_TYP_OFF, sizeof(packet_type));
-    if (packet_rid != 1 || packet_type != 2) {
+    if (packet_rid_auth != 1 || packet_type != 2) {
         printf("Auth unsuccessful\n");
         close(in_sock);
         exit(1);
