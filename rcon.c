@@ -82,9 +82,9 @@ int write_all(size_t packet_size, unsigned char* packet, int in_sock) {
     }
     return 0;
 }
-int read_all(size_t* bytes_in_buffer, unsigned char* packet, size_t packet_size, int32_t target, int in_sock) {
+int read_all(size_t* bytes_in_buffer, unsigned char* packet, size_t packet_size, size_t target, int in_sock) {
     ssize_t r_size;
-    while ( (int32_t)*bytes_in_buffer < target) {
+    while ( *bytes_in_buffer < target) {
         if ( (r_size = read(in_sock, packet + *bytes_in_buffer, packet_size - *bytes_in_buffer)) < 0) {
             printf("Packet failed to read\n");
             return -1;
@@ -164,10 +164,12 @@ void intake_setup(char* pswd, char* addr, char* port, size_t pswd_count, size_t 
 void authenticate(const char* pswd, size_t pswd_len, int32_t packet_rid, unsigned char* packet_w, unsigned char* packet_r,
         size_t packet_r_count, int in_sock, struct sockaddr_in s_addr) {
     int32_t packet_type = 3; // declared locally, no need to pass
-    ssize_t r_size;
     int32_t packet_rid_auth;
     size_t packet_size;
+    int32_t packet_len;
     int write_ret = 0;
+    int read_ret = 0;
+    size_t bytes_in_buffer = 0;
     packet_size = packet_constructor(packet_w, pswd, pswd_len, packet_type, packet_rid);
     if ( (write_ret = write_all(packet_size, packet_w, in_sock)) == 1 ) {
         in_sock = establish_connection(s_addr, in_sock);
@@ -177,9 +179,20 @@ void authenticate(const char* pswd, size_t pswd_len, int32_t packet_rid, unsigne
         exit(1);
     }
 
-    if ( (r_size = read(in_sock, packet_r, packet_r_count)) < 0) {
-        printf("Packet failed to read\n");
-        close(in_sock);
+    if ( (read_ret = read_all(&bytes_in_buffer, packet_r, packet_r_count, sizeof(packet_len), in_sock)) == 1 ) {
+        in_sock = establish_connection(s_addr, in_sock);
+    }
+    else if ( read_ret == -1 ) {
+        exit(1);
+    }
+
+    memcpy(&packet_len, packet_r + RCON_LEN_OFF, sizeof(packet_len));
+    packet_size = sizeof(packet_len) + packet_len;
+
+    if ( (read_ret = read_all(&bytes_in_buffer, packet_r, sizeof(packet_r), packet_size, in_sock)) == 1) {
+        in_sock = establish_connection(s_addr, in_sock);
+    }
+    else if ( read_ret == -1 ) {
         exit(1);
     }
 
@@ -294,7 +307,7 @@ int main() {
                 break;
             }
 
-            memmove(packet_r, packet_r + packet_len, bytes_in_buffer);
+            memmove(packet_r, packet_r + packet_size, bytes_in_buffer);
 
 
             if ( !sentinel_sent ) {
@@ -319,5 +332,5 @@ int main() {
         packet_rid++;
     }
     close(sock);
-    return 0;
+    return EXIT_SUCCESS;
 }
