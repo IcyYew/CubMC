@@ -105,12 +105,7 @@ int read_all(size_t* bytes_in_buffer, unsigned char* packet, size_t packet_size,
 
 // Constructs an RCON packet, unsigned char* packet is to be written into, unsigned char* payload is the string payload passed from the function call
 // size_t payload_count is the length of that payload, and packet_type is what type of packet we have
-// Internally, the variable packet_len is used as both the RCON length field and then re-used as the overrall packet buffer size
-// We allocate two extra bytes to packet_len to account for the two null terminators expected by the RCON protocol, one for the payload itself and
-// another for the null padding
-// The function returns packet_len as the total packet buffer size for use in subsequent read/write handling after this function is called
-// An important note that this function relies on the global variable rid_iter, and the expectation is that rid_iter be iterated upon after the packet
-// referenced by it is completely serialized and handled after this function call
+// The function returns packet_size as the total packet buffer size for use in subsequent read/write handling after this function is called
 size_t packet_constructor(unsigned char* packet, const char* payload, size_t payload_count, int32_t packet_type, int packet_rid) {
     // RCON length field
     int32_t packet_len = sizeof(packet_type) + sizeof(packet_rid) + payload_count + 2;
@@ -160,9 +155,10 @@ void intake_setup(char* pswd, char* addr, char* port, size_t pswd_count, size_t 
 }
 
 // when other helper functions are made this should be cleaner
-// much like with intake_setup, returns nothing becauses we exit in failure, this one will need changed!!!
-void authenticate(const char* pswd, size_t pswd_len, int32_t packet_rid, unsigned char* packet_w, unsigned char* packet_r,
-        size_t packet_r_count, int in_sock, struct sockaddr_in s_addr) {
+// currently authenticate is a "stand-alone helper" in regards to our connected/authenticated state, eventually want to move into more of a
+// "Session handler" with retries that manages our connected session state working in conjunction with establish_connection().
+int authenticate(const char* pswd, size_t pswd_len, int32_t packet_rid, unsigned char* packet_w, unsigned char* packet_r,
+        size_t packet_r_count, int in_sock) {
     int32_t packet_type = 3; // declared locally, no need to pass
     int32_t packet_rid_auth;
     size_t packet_size;
@@ -172,28 +168,28 @@ void authenticate(const char* pswd, size_t pswd_len, int32_t packet_rid, unsigne
     size_t bytes_in_buffer = 0;
     packet_size = packet_constructor(packet_w, pswd, pswd_len, packet_type, packet_rid);
     if ( (write_ret = write_all(packet_size, packet_w, in_sock)) == 1 ) {
-        in_sock = establish_connection(s_addr, in_sock);
+        return 1;
     }
     else if ( write_ret == -1 ) {
         // if we reach this case in auth we are cooked anyways
-        exit(1);
+        return 1;
     }
 
     if ( (read_ret = read_all(&bytes_in_buffer, packet_r, packet_r_count, sizeof(packet_len), in_sock)) == 1 ) {
-        in_sock = establish_connection(s_addr, in_sock);
+        return 1;
     }
     else if ( read_ret == -1 ) {
-        exit(1);
+        return 1;
     }
 
     memcpy(&packet_len, packet_r + RCON_LEN_OFF, sizeof(packet_len));
     packet_size = sizeof(packet_len) + packet_len;
 
     if ( (read_ret = read_all(&bytes_in_buffer, packet_r, sizeof(packet_r), packet_size, in_sock)) == 1) {
-        in_sock = establish_connection(s_addr, in_sock);
+        return 1;
     }
     else if ( read_ret == -1 ) {
-        exit(1);
+        return 1;
     }
 
     memcpy(&packet_rid_auth, packet_r + RCON_RID_OFF, sizeof(packet_rid_auth));
@@ -201,8 +197,10 @@ void authenticate(const char* pswd, size_t pswd_len, int32_t packet_rid, unsigne
     if (packet_rid_auth != 1 || packet_type != 2) {
         printf("Auth unsuccessful\n");
         close(in_sock);
-        exit(1);
+        return 1;
     }
+
+    return 0;
 
 }
 
@@ -244,7 +242,9 @@ int main() {
 
     sock = establish_connection(s_addr, -1);
 
-    authenticate(pswd, pswd_len, packet_rid, packet_w, packet_r, sizeof(packet_r), sock, s_addr);
+    if ( authenticate(pswd, pswd_len, packet_rid, packet_w, packet_r, sizeof(packet_r), sock) ) {
+        exit(1);
+    }
 
     packet_rid++;
 
@@ -267,7 +267,7 @@ int main() {
         
         if ( (write_ret = write_all(packet_size, packet_w, sock)) == 1 ) {
             sock = establish_connection(s_addr, sock);
-            authenticate(pswd, pswd_len, packet_rid, packet_w, packet_r, sizeof(packet_r), sock, s_addr);
+            authenticate(pswd, pswd_len, packet_rid, packet_w, packet_r, sizeof(packet_r), sock);
             continue;
         }
         else if ( write_ret == -1 ) {
@@ -278,7 +278,9 @@ int main() {
     
             if ( (read_ret = read_all(&bytes_in_buffer, packet_r, sizeof(packet_r), sizeof(packet_len), sock)) == 1 ) {
                 sock = establish_connection(s_addr, sock);
-                authenticate(pswd, pswd_len, packet_rid, packet_w, packet_r, sizeof(packet_r), sock, s_addr);
+                if ( authenticate(pswd, pswd_len, packet_rid, packet_w, packet_r, sizeof(packet_r), sock) ) {
+                    exit(1);
+                }
                 break;
             }
             else if ( read_ret == -1 ) {
@@ -290,7 +292,9 @@ int main() {
 
             if ( (read_ret = read_all(&bytes_in_buffer, packet_r, sizeof(packet_r), packet_size, sock)) == 1) {
                 sock = establish_connection(s_addr, sock);
-                authenticate(pswd, pswd_len, packet_rid, packet_w, packet_r, sizeof(packet_r), sock, s_addr);
+                if ( authenticate(pswd, pswd_len, packet_rid, packet_w, packet_r, sizeof(packet_r), sock) ) {
+                    exit(1);
+                }
                 break;
             }
             else if ( read_ret == -1 ) {
@@ -317,7 +321,9 @@ int main() {
                 packet_size = packet_constructor(packet_s, sentinel_pload, sentinel_len, packet_type, sentinel_packet_rid);
                 if ( (write_ret = write_all(packet_size, packet_s, sock)) == 1) {
                     sock = establish_connection(s_addr, sock);
-                    authenticate(pswd, pswd_len, packet_rid, packet_w, packet_r, sizeof(packet_r), sock, s_addr);
+                    if ( authenticate(pswd, pswd_len, packet_rid, packet_w, packet_r, sizeof(packet_r), sock) ) {
+                        exit(1);
+                    }
                     break;
                 }
                 else if ( write_ret == -1 ) {
