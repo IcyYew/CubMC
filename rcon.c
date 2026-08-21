@@ -267,7 +267,9 @@ int main() {
         
         if ( (write_ret = write_all(packet_size, packet_w, sock)) == 1 ) {
             sock = establish_connection(s_addr, sock);
-            authenticate(pswd, pswd_len, packet_rid, packet_w, packet_r, sizeof(packet_r), sock);
+            if ( authenticate(pswd, pswd_len, packet_rid, packet_w, packet_r, sizeof(packet_r), sock) ) {
+                exit(1);
+            }
             continue;
         }
         else if ( write_ret == -1 ) {
